@@ -14,14 +14,14 @@ This project simulates the growth of a city over time, including residential, co
 
 1. Prepare your configuration file (e.g., `config.txt`) with the following format:
    ```
-   region1.csv
-   50
-   5
+   Region Layout:region1.csv
+   Time Limit:20
+   Refresh Rate:1
    ```
    Where:
-   - First line: name of the region layout file
-   - Second line: maximum number of time steps
-   - Third line: refresh rate for displaying the region state
+   - Region Layout: specifies the name of the region layout file
+   - Time Limit: maximum number of time steps for the simulation
+   - Refresh Rate: how often the region state should be displayed (1 means every time step)
 
 2. Prepare your region layout file (e.g., `region1.csv`) in CSV format using these symbols:
    - R: Residential zone
