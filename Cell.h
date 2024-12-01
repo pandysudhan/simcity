@@ -6,32 +6,35 @@ enum CellType {
     RESIDENTIAL,
     INDUSTRIAL,
     COMMERCIAL,
-    ROAD,
+    POWERPLANT,
     POWERLINE,
     POWERLINE_ROAD,
-    POWERPLANT
+    ROAD
 };
 
 class Cell {
 private:
     CellType type;
     int population;
-    int pollution;
     bool hasPower;
+    int pollution;
 
 public:
     Cell();
-    Cell(CellType t);
     
     CellType getType() const;
-    int getPopulation() const;
-    int getPollution() const;
-    bool isPowered() const;
-    
     void setType(CellType t);
-    void setPopulation(int pop);
-    void setPollution(int pol);
-    void setPower(bool power);
+    
+    int getPopulation() const;
+    void setPopulation(int p);
+    void incrementPopulation();
+    
+    bool getPower() const;
+    void setPower(bool p);
+    
+    int getPollution() const;
+    void setPollution(int p);
+    void addPollution(int p);
     
     char getDisplayChar() const;
 };

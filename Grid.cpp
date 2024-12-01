@@ -3,8 +3,9 @@
 #include <sstream>
 #include <iostream>
 #include <algorithm>
+#include <iomanip>
 
-Grid::Grid(int r, int c) : rows(r), cols(c), availableWorkers(0), availableGoods(0) {
+Grid::Grid(int r, int c) : rows(r), cols(c), availableWorkers(0), availableGoods(0), roadNetwork(r, c) {
     cells.resize(rows, std::vector<Cell>(cols));
 }
 
@@ -27,8 +28,9 @@ bool Grid::updateResidentialCell(int x, int y) {
     Cell& cell = cells[x][y];
     int adjPop = countAdjacentPopulation(x, y, cell.getPopulation());
     bool hasPower = hasAdjacentPowerline(x, y);
+    bool hasRoad = hasRoadAccess(x, y);
     
-    if (ResidentialZone::canGrow(cell, adjPop, hasPower)) {
+    if (ResidentialZone::canGrow(cell, adjPop, hasPower) && hasRoad) {
         ResidentialZone::grow(cell);
         return true;
     }
@@ -39,8 +41,9 @@ bool Grid::updateIndustrialCell(int x, int y) {
     Cell& cell = cells[x][y];
     int adjPop = countAdjacentPopulation(x, y, cell.getPopulation());
     bool hasPower = hasAdjacentPowerline(x, y);
+    bool hasRoad = hasRoadAccess(x, y);
     
-    if (IndustrialZone::canGrow(cell, adjPop, hasPower, availableWorkers)) {
+    if (IndustrialZone::canGrow(cell, adjPop, hasPower, availableWorkers) && hasRoad) {
         IndustrialZone::grow(cell, availableWorkers);
         return true;
     }
@@ -51,8 +54,9 @@ bool Grid::updateCommercialCell(int x, int y) {
     Cell& cell = cells[x][y];
     int adjPop = countAdjacentPopulation(x, y, cell.getPopulation());
     bool hasPower = hasAdjacentPowerline(x, y);
+    bool hasRoad = hasRoadAccess(x, y);
     
-    if (CommercialZone::canGrow(cell, adjPop, hasPower, availableWorkers, availableGoods)) {
+    if (CommercialZone::canGrow(cell, adjPop, hasPower, availableWorkers, availableGoods) && hasRoad) {
         CommercialZone::grow(cell, availableWorkers, availableGoods);
         return true;
     }
@@ -61,37 +65,199 @@ bool Grid::updateCommercialCell(int x, int y) {
 
 void Grid::loadFromCSV(const std::string& filename) {
     std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open file " << filename << std::endl;
+        return;
+    }
+
     std::string line;
     int row = 0;
     
     while (std::getline(file, line) && row < rows) {
         std::stringstream ss(line);
-        std::string cell;
+        std::string cellStr;
         int col = 0;
         
-        while (std::getline(ss, cell, ',') && col < cols) {
-            char type = cell[cell.find_first_not_of(" \t")];
-            CellType cellType;
+        while (std::getline(ss, cellStr, ',') && col < cols) {
+            // Remove whitespace
+            cellStr.erase(std::remove_if(cellStr.begin(), cellStr.end(), ::isspace), cellStr.end());
             
-            switch (type) {
-                case 'R': cellType = RESIDENTIAL; break;
-                case 'I': cellType = INDUSTRIAL; break;
-                case 'C': cellType = COMMERCIAL; break;
-                case '-': cellType = ROAD; break;
-                case 'T': cellType = POWERLINE; break;
-                case '#': cellType = POWERLINE_ROAD; break;
-                case 'P': cellType = POWERPLANT; break;
-                default: cellType = EMPTY;
+            if (cellStr.empty()) {
+                cells[row][col].setType(EMPTY);
+                col++;
+                continue;
             }
             
-            cells[row][col] = Cell(cellType);
-            if (cellType == POWERPLANT || cellType == POWERLINE || cellType == POWERLINE_ROAD) {
-                cells[row][col].setPower(true);
+            char type = cellStr[0];
+            Cell& currentCell = cells[row][col];
+            
+            switch (type) {
+                case 'R':
+                    currentCell.setType(RESIDENTIAL);
+                    break;
+                case 'I':
+                    currentCell.setType(INDUSTRIAL);
+                    break;
+                case 'C':
+                    currentCell.setType(COMMERCIAL);
+                    break;
+                case 'P':
+                    currentCell.setType(POWERPLANT);
+                    currentCell.setPower(true);
+                    break;
+                case 'T':
+                    currentCell.setType(POWERLINE);
+                    currentCell.setPower(true);
+                    break;
+                case '#':
+                    currentCell.setType(ROAD);
+                    roadNetwork.addRoad(row, col, RoadType::HIGHWAY);
+                    break;
+                case '-':
+                    currentCell.setType(ROAD);
+                    roadNetwork.addRoad(row, col, RoadType::TWO_LANE);
+                    break;
+                default:
+                    currentCell.setType(EMPTY);
+                    break;
             }
             col++;
         }
         row++;
     }
+    
+    // After loading, check road network connectivity
+    if (!checkRoadConnectivity()) {
+        std::cout << "Warning: Not all roads are connected!\n";
+    }
+}
+
+void Grid::simulate() {
+    updateAvailableWorkers();
+    updateAvailableGoods();
+    updateTraffic();
+    
+    // Randomly update cells
+    std::vector<std::pair<int, int>> positions;
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            if (cells[i][j].getType() != EMPTY) {
+                positions.push_back({i, j});
+            }
+        }
+    }
+    std::random_shuffle(positions.begin(), positions.end());
+    
+    for (const auto& pos : positions) {
+        updateCell(pos.first, pos.second);
+    }
+    
+    calculatePollution();
+}
+
+void Grid::displayGrid() const {
+    std::cout << "\nCurrent Grid State:\n";
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            const Cell& cell = cells[i][j];
+            if (cell.getType() == ROAD) {
+                Road* road = roadNetwork.getRoad(i, j);
+                if (road && road->getType() == RoadType::HIGHWAY) {
+                    std::cout << "# ";
+                } else {
+                    std::cout << "- ";
+                }
+            } else {
+                char display = ' ';
+                switch (cell.getType()) {
+                    case RESIDENTIAL: display = 'R'; break;
+                    case INDUSTRIAL: display = 'I'; break;
+                    case COMMERCIAL: display = 'C'; break;
+                    case POWERPLANT: display = 'P'; break;
+                    case POWERLINE: display = 'T'; break;
+                    default: display = ' ';
+                }
+                std::cout << display << " ";
+            }
+        }
+        std::cout << "\n";
+    }
+    
+    // Display road connectivity status
+    std::cout << "\nRoad Network Status: " 
+              << (checkRoadConnectivity() ? "Connected" : "Disconnected") << "\n";
+              
+    // Display traffic information
+    displayTraffic();
+}
+
+void Grid::displayTraffic() const {
+    auto congestedRoads = getCongestedRoads();
+    if (!congestedRoads.empty()) {
+        std::cout << "\nTraffic Status:\n";
+        std::cout << "Congested roads at locations:\n";
+        for (const auto& pos : congestedRoads) {
+            std::cout << "(" << pos.first << "," << pos.second << ") ";
+        }
+        std::cout << "\n";
+    } else {
+        std::cout << "\nNo road congestion detected.\n";
+    }
+}
+
+bool Grid::hasRoadAccess(int x, int y) const {
+    if (!isValidPosition(x, y)) return false;
+    
+    // Check adjacent cells for roads
+    const int dx[] = {-1, 1, 0, 0};
+    const int dy[] = {0, 0, -1, 1};
+    
+    for (int i = 0; i < 4; ++i) {
+        int newX = x + dx[i];
+        int newY = y + dy[i];
+        if (isValidPosition(newX, newY) && cells[newX][newY].getType() == ROAD) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void Grid::updateTraffic() {
+    roadNetwork.updateTraffic();
+}
+
+// Road network related methods
+bool Grid::addRoad(int x, int y, RoadType type) {
+    if (!isValidPosition(x, y)) return false;
+    if (cells[x][y].getType() != EMPTY) return false;
+    
+    roadNetwork.addRoad(x, y, type);
+    cells[x][y].setType(ROAD);
+    return true;
+}
+
+bool Grid::removeRoad(int x, int y) {
+    if (!isValidPosition(x, y)) return false;
+    if (cells[x][y].getType() != ROAD) return false;
+    
+    roadNetwork.removeRoad(x, y);
+    cells[x][y].setType(EMPTY);
+    return true;
+}
+
+bool Grid::checkRoadConnectivity() const {
+    return roadNetwork.checkConnectivity();
+}
+
+std::vector<std::pair<int, int>> Grid::findBestRoute(
+    std::pair<int, int> start,
+    std::pair<int, int> end
+) const {
+    return roadNetwork.findBestPath(start, end);
+}
+
+std::vector<std::pair<int, int>> Grid::getCongestedRoads() const {
+    return roadNetwork.getCongestedRoads();
 }
 
 void Grid::calculatePollution() {
@@ -184,24 +350,6 @@ bool Grid::hasAdjacentPowerline(int x, int y) const {
     return false;
 }
 
-void Grid::displayGrid() const {
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            std::cout << cells[i][j].getDisplayChar() << " ";
-        }
-        std::cout << std::endl;
-    }
-}
-
-void Grid::displayPollution() const {
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            std::cout << cells[i][j].getPollution() << " ";
-        }
-        std::cout << std::endl;
-    }
-}
-
 int Grid::getRows() const { return rows; }
 int Grid::getCols() const { return cols; }
 Cell& Grid::getCell(int x, int y) { return cells[x][y]; }
@@ -275,5 +423,15 @@ void Grid::getAreaStatistics(int x1, int y1, int x2, int y2,
             }
             pollution += cell.getPollution();
         }
+    }
+}
+
+void Grid::displayPollution() const {
+    std::cout << "\nPollution levels:\n";
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            std::cout << cells[i][j].getPollution() << " ";
+        }
+        std::cout << "\n";
     }
 } 

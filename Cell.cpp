@@ -2,17 +2,19 @@
 
 Cell::Cell() : type(EMPTY), population(0), pollution(0), hasPower(false) {}
 
-Cell::Cell(CellType t) : type(t), population(0), pollution(0), hasPower(false) {}
-
 CellType Cell::getType() const { return type; }
-int Cell::getPopulation() const { return population; }
-int Cell::getPollution() const { return pollution; }
-bool Cell::isPowered() const { return hasPower; }
-
 void Cell::setType(CellType t) { type = t; }
-void Cell::setPopulation(int pop) { population = pop; }
-void Cell::setPollution(int pol) { pollution = pol; }
-void Cell::setPower(bool power) { hasPower = power; }
+
+int Cell::getPopulation() const { return population; }
+void Cell::setPopulation(int p) { population = p; }
+void Cell::incrementPopulation() { population++; }
+
+bool Cell::getPower() const { return hasPower; }
+void Cell::setPower(bool p) { hasPower = p; }
+
+int Cell::getPollution() const { return pollution; }
+void Cell::setPollution(int p) { pollution = p; }
+void Cell::addPollution(int p) { pollution += p; }
 
 char Cell::getDisplayChar() const {
     if (population > 0) {
